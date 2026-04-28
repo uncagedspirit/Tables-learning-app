@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMistakes, getStreakData } from '../storage';
 import { colors, spacing, radius, typography } from '../utils/theme';
+import Logo from '../components/Logo';
 
 export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
   const [mistakes, setMistakes] = useState([]);
@@ -53,6 +54,7 @@ export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
       >
         {/* Header */}
         <View style={styles.header}>
+          <Logo size={80} style={styles.logo} />
           <Text style={styles.appTitle}>multiply</Text>
           <Text style={styles.appSubtitle}>master your tables</Text>
         </View>
@@ -131,6 +133,10 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: spacing.xxl,
+    alignItems: 'center',
+  },
+  logo: {
+    marginBottom: spacing.lg,
   },
   appTitle: {
     fontSize: 42,
