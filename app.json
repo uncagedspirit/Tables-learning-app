@@ -16,12 +16,28 @@
       "enableProguardInReleaseBuilds": true,
       "enableShrinkResourcesInReleaseBuilds": true,
       "minSdkVersion": 24,
-      "targetSdkVersion": 35
+      "targetSdkVersion": 35,
+      "splitApks": true
     },
     "extra": {
       "eas": {
         "projectId": "136198f5-89c6-41af-8236-fae13e33db61"
       }
-    }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "useLegacyPackaging": false,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ]
+    ]
   }
 }
