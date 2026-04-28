@@ -7,11 +7,16 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.uncagedspirit.multiplicationapp"
     },
     "android": {
       "edgeToEdgeEnabled": true,
-      "package": "com.uncagedspirit.multiplicationapp"
+      "package": "com.uncagedspirit.multiplicationapp",
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true,
+      "minSdkVersion": 24,
+      "targetSdkVersion": 35
     },
     "extra": {
       "eas": {
