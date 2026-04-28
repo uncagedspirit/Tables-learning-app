@@ -8,11 +8,11 @@
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.uncagedspirit.multiplicationapp"
+      "bundleIdentifier": "com.timestables.multiplication.training"
     },
     "android": {
       "edgeToEdgeEnabled": true,
-      "package": "com.uncagedspirit.multiplicationapp",
+      "package": "com.timestables.multiplication.training",
       "enableProguardInReleaseBuilds": true,
       "enableShrinkResourcesInReleaseBuilds": true,
       "minSdkVersion": 24,
