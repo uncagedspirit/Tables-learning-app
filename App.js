@@ -1,20 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import './src/config/firebase'; // Initialize Firebase
+import './src/config/firebase';
 import HomeScreen from './src/screens/HomeScreen';
 import QuizScreen from './src/screens/QuizScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
+import LearnScreen from './src/screens/LearnScreen';
 import { colors } from './src/utils/theme';
+import { initSounds } from './src/utils/sounds';
 
 export default function App() {
-  // Navigation state: 'home' | 'quiz' | 'results'
+  // Navigation state: 'home' | 'quiz' | 'results' | 'learn'
   const [currentScreen, setCurrentScreen] = useState('home');
-  
-  // Quiz state
-  const [quizMode, setQuizMode] = useState('practice'); // 'practice' | 'mistakes'
-  
-  // Results state
+  const [quizMode, setQuizMode] = useState('practice');
   const [results, setResults] = useState({
     total: 0,
     correct: 0,
@@ -22,7 +20,10 @@ export default function App() {
     mode: 'practice',
   });
 
-  // Handlers for HomeScreen
+  useEffect(() => {
+    initSounds();
+  }, []);
+
   const handleStartPractice = (mode) => {
     setQuizMode(mode);
     setCurrentScreen('quiz');
@@ -33,7 +34,10 @@ export default function App() {
     setCurrentScreen('quiz');
   };
 
-  // Handlers for QuizScreen
+  const handleLearnTables = () => {
+    setCurrentScreen('learn');
+  };
+
   const handleEndSession = (sessionResults) => {
     setResults(sessionResults);
     setCurrentScreen('results');
@@ -43,7 +47,6 @@ export default function App() {
     setCurrentScreen('home');
   };
 
-  // Handlers for ResultsScreen
   const handlePracticeAgain = (mode) => {
     setQuizMode(mode);
     setCurrentScreen('quiz');
@@ -55,11 +58,12 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar style="light" backgroundColor={colors.bg} />
       {currentScreen === 'home' && (
         <HomeScreen
           onStartPractice={handleStartPractice}
           onReviewMistakes={handleReviewMistakes}
+          onLearnTables={handleLearnTables}
         />
       )}
       {currentScreen === 'quiz' && (
@@ -78,6 +82,9 @@ export default function App() {
           onPracticeAgain={handlePracticeAgain}
           onBackToHome={handleBackToHome}
         />
+      )}
+      {currentScreen === 'learn' && (
+        <LearnScreen onBack={handleNavigateHome} />
       )}
     </SafeAreaProvider>
   );

@@ -10,18 +10,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { updateStreakAfterSession } from '../storage';
+import { addXP } from '../storage/xp';
 import { formatAccuracy } from '../utils/quiz';
 import { colors, spacing, radius } from '../utils/theme';
 
-export default function ResultsScreen({ 
-  total, 
-  correct, 
-  wrong, 
+export default function ResultsScreen({
+  total,
+  correct,
+  wrong,
   mode,
   onPracticeAgain,
   onBackToHome
 }) {
   const [newStreak, setNewStreak] = useState(null);
+  const [xpResult, setXpResult] = useState(null);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(30));
 
@@ -38,15 +40,22 @@ export default function ResultsScreen({
       : { label: 'Keep practicing', emoji: '📚', color: colors.textSecondary };
 
   useEffect(() => {
-    if (total > 0 && mode !== 'mistakes') {
-      updateStreakAfterSession().then(setNewStreak);
-    }
+    const setup = async () => {
+      if (total > 0) {
+        const [xp] = await Promise.all([
+          addXP(correct, total),
+          mode !== 'mistakes' ? updateStreakAfterSession().then(setNewStreak) : Promise.resolve(),
+        ]);
+        setXpResult(xp);
+      }
+    };
+    setup();
 
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
-  }, [total, mode, fadeAnim, slideAnim]);
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -63,7 +72,7 @@ export default function ResultsScreen({
             <Text style={[styles.gradeLabel, { color: grade.color }]}>{grade.label}</Text>
           </View>
 
-          {/* Accuracy Big Display */}
+          {/* Accuracy */}
           <View style={styles.accuracyCard}>
             <Text style={[styles.accuracyNumber, { color: grade.color }]}>{accuracy}</Text>
             <Text style={styles.accuracyLabel}>accuracy</Text>
@@ -75,7 +84,7 @@ export default function ResultsScreen({
               <Text style={styles.statNumber}>{total}</Text>
               <Text style={styles.statLabel}>questions</Text>
             </View>
-            <View style={[styles.statDivider]} />
+            <View style={styles.statDivider} />
             <View style={styles.statItem}>
               <Text style={[styles.statNumber, { color: colors.success }]}>{correct}</Text>
               <Text style={styles.statLabel}>correct</Text>
@@ -87,14 +96,30 @@ export default function ResultsScreen({
             </View>
           </View>
 
-          {/* Streak update */}
+          {/* XP Earned */}
+          {xpResult && xpResult.earned > 0 && (
+            <View style={styles.xpCard}>
+              <View style={styles.xpCardLeft}>
+                <Text style={styles.xpEmoji}>⚡</Text>
+                <View>
+                  <Text style={styles.xpEarned}>+{xpResult.earned} XP</Text>
+                  <Text style={styles.xpLevel}>Level {xpResult.level}</Text>
+                </View>
+              </View>
+              {xpResult.levelUp && (
+                <View style={styles.levelUpBadge}>
+                  <Text style={styles.levelUpText}>LEVEL UP! 🎉</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Streak */}
           {newStreak !== null && total > 0 && (
             <View style={styles.streakUpdateCard}>
               <Text style={styles.streakFireEmoji}>🔥</Text>
               <View>
-                <Text style={styles.streakUpdateTitle}>
-                  {newStreak} day streak
-                </Text>
+                <Text style={styles.streakUpdateTitle}>{newStreak} day streak</Text>
                 <Text style={styles.streakUpdateSub}>Session complete</Text>
               </View>
             </View>
@@ -124,29 +149,16 @@ export default function ResultsScreen({
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
+  safe: { flex: 1, backgroundColor: colors.bg },
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.xl,
   },
-  gradeSection: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  gradeEmoji: {
-    fontSize: 52,
-    marginBottom: spacing.sm,
-  },
-  gradeLabel: {
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-  },
+  gradeSection: { alignItems: 'center', marginBottom: spacing.xl },
+  gradeEmoji: { fontSize: 52, marginBottom: spacing.sm },
+  gradeLabel: { fontSize: 26, fontWeight: '800', letterSpacing: -0.8 },
   accuracyCard: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -156,12 +168,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  accuracyNumber: {
-    fontSize: 72,
-    fontWeight: '900',
-    letterSpacing: -3,
-    lineHeight: 76,
-  },
+  accuracyNumber: { fontSize: 72, fontWeight: '900', letterSpacing: -3, lineHeight: 76 },
   accuracyLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -180,16 +187,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -1,
-  },
+  statItem: { flex: 1, alignItems: 'center' },
+  statNumber: { fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: -1 },
   statLabel: {
     fontSize: 11,
     fontWeight: '600',
@@ -198,11 +197,31 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: spacing.xs,
   },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: colors.border,
+  statDivider: { width: 1, height: 40, backgroundColor: colors.border },
+  // XP Card
+  xpCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '33',
   },
+  xpCardLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  xpEmoji: { fontSize: 28 },
+  xpEarned: { fontSize: 20, fontWeight: '800', color: colors.primary, letterSpacing: -0.5 },
+  xpLevel: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  levelUpBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+  },
+  levelUpText: { fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
+  // Streak
   streakUpdateCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -214,21 +233,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  streakFireEmoji: {
-    fontSize: 32,
-  },
-  streakUpdateTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.streak,
-    letterSpacing: -0.4,
-  },
-  streakUpdateSub: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 2,
-    fontWeight: '400',
-  },
+  streakFireEmoji: { fontSize: 32 },
+  streakUpdateTitle: { fontSize: 18, fontWeight: '700', color: colors.streak, letterSpacing: -0.4 },
+  streakUpdateSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   primaryBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.lg,
@@ -244,17 +251,8 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  primaryBtnText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: -0.3,
-  },
-  primaryBtnArrow: {
-    fontSize: 20,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '600',
-  },
+  primaryBtnText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: -0.3 },
+  primaryBtnArrow: { fontSize: 20, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
   homeBtn: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -263,13 +261,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  homeBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  btnPressed: {
-    opacity: 0.75,
-    transform: [{ scale: 0.985 }],
-  },
+  homeBtnText: { fontSize: 16, fontWeight: '600', color: colors.textSecondary },
+  btnPressed: { opacity: 0.75, transform: [{ scale: 0.985 }] },
 });

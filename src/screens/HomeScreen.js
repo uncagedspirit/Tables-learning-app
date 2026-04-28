@@ -9,40 +9,45 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMistakes, getStreakData } from '../storage';
+import { getXPData, getLevelFromXP, getXPProgress } from '../storage/xp';
 import { colors, spacing, radius, typography } from '../utils/theme';
 import Logo from '../components/Logo';
 
-export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
+export default function HomeScreen({ onStartPractice, onReviewMistakes, onLearnTables }) {
   const [mistakes, setMistakes] = useState([]);
   const [streak, setStreak] = useState(0);
+  const [xpData, setXpData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const loadData = async () => {
     try {
-      const [m, { streak: s }] = await Promise.all([
+      const [m, { streak: s }, xp] = await Promise.all([
         getMistakes(),
         getStreakData(),
+        getXPData(),
       ]);
       setMistakes(m);
       setStreak(s);
+      setXpData(xp);
     } catch (e) {
-      console.error('Error loading home data:', e);
+      // silent
     } finally {
       setLoading(false);
     }
   };
 
-  // Reload data whenever screen comes into focus
   useEffect(() => {
-    const interval = setInterval(loadData, 1000);
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
   }, []);
 
   const hasMistakes = mistakes.length > 0;
+  const level = xpData ? xpData.level : 1;
+  const progress = xpData ? xpData.progress : { current: 0, max: 100, percent: 0 };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -58,6 +63,33 @@ export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
           <Text style={styles.appTitle}>multiply</Text>
           <Text style={styles.appSubtitle}>master your tables</Text>
         </View>
+
+        {/* Level + XP Bar */}
+        {xpData && (
+          <View style={styles.xpCard}>
+            <View style={styles.xpCardTop}>
+              <View style={styles.xpLevelBadge}>
+                <Text style={styles.xpLevelText}>LVL {level}</Text>
+              </View>
+              <View style={styles.xpRight}>
+                <Text style={styles.xpLabel}>
+                  {xpData.xp} XP
+                  {xpData.totalCorrect > 0 && (
+                    <Text style={styles.xpSub}>  ·  {xpData.totalCorrect} correct</Text>
+                  )}
+                </Text>
+                <View style={styles.xpBarBg}>
+                  <View
+                    style={[
+                      styles.xpBarFill,
+                      { width: `${Math.round(progress.percent * 100)}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Streak Card */}
         <View style={styles.streakCard}>
@@ -81,7 +113,7 @@ export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
           </View>
         </View>
 
-        {/* Stats pills if mistakes exist */}
+        {/* Mistakes pill */}
         {hasMistakes && (
           <View style={styles.mistakePill}>
             <View style={styles.mistakeDot} />
@@ -98,6 +130,23 @@ export default function HomeScreen({ onStartPractice, onReviewMistakes }) {
         >
           <Text style={styles.primaryBtnText}>Start Practice</Text>
           <Text style={styles.primaryBtnArrow}>→</Text>
+        </Pressable>
+
+        {/* Learn Tables */}
+        <Pressable
+          style={({ pressed }) => [styles.learnBtn, pressed && styles.learnBtnPressed]}
+          onPress={onLearnTables}
+        >
+          <View style={styles.learnBtnInner}>
+            <View style={styles.learnBtnLeft}>
+              <Text style={styles.learnBtnEmoji}>📖</Text>
+              <View>
+                <Text style={styles.learnBtnText}>Learn Tables</Text>
+                <Text style={styles.learnBtnSub}>2 to 20</Text>
+              </View>
+            </View>
+            <Text style={styles.learnBtnArrow}>→</Text>
+          </View>
         </Pressable>
 
         {/* Mistakes CTA */}
@@ -132,7 +181,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   header: {
-    marginBottom: spacing.xxl,
+    marginBottom: spacing.xl,
     alignItems: 'center',
   },
   logo: {
@@ -151,6 +200,58 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     letterSpacing: 0.5,
   },
+  // XP Card
+  xpCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  xpCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  xpLevelBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+  },
+  xpLevelText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.5,
+  },
+  xpRight: {
+    flex: 1,
+    gap: 6,
+  },
+  xpLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  xpSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '400',
+  },
+  xpBarBg: {
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  xpBarFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+  },
+  // Streak Card
   streakCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -195,6 +296,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'right',
   },
+  // Mistake pill
   mistakePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -220,6 +322,7 @@ const styles = StyleSheet.create({
     color: colors.error,
     letterSpacing: 0.3,
   },
+  // Primary button
   primaryBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.lg,
@@ -250,6 +353,50 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '600',
   },
+  // Learn button
+  learnBtn: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  learnBtnPressed: {
+    opacity: 0.75,
+  },
+  learnBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  learnBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  learnBtnEmoji: {
+    fontSize: 22,
+  },
+  learnBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  learnBtnSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 1,
+    fontWeight: '400',
+  },
+  learnBtnArrow: {
+    fontSize: 16,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  // Secondary (Mistakes) button
   secondaryBtn: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

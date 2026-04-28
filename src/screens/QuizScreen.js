@@ -7,13 +7,13 @@ import {
   TextInput,
   StatusBar,
   Keyboard,
-  Platform,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { generateQuestion, generateQuestionFromList } from '../utils/quiz';
 import { getMistakes, addMistake, removeMistake } from '../storage';
 import { colors, spacing, radius } from '../utils/theme';
+import { playCorrect, playWrong } from '../utils/sounds';
 
 const FEEDBACK_DURATION = 900;
 
@@ -22,16 +22,18 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
 
   const [question, setQuestion] = useState(null);
   const [input, setInput] = useState('');
-  const [feedback, setFeedback] = useState(null); // null | 'correct' | 'wrong'
+  const [feedback, setFeedback] = useState(null);
   const [correctAnswer, setCorrectAnswer] = useState(null);
   const [session, setSession] = useState({ total: 0, correct: 0, wrong: 0 });
   const [mistakes, setMistakes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [combo, setCombo] = useState(0); // consecutive correct answers
 
   const inputRef = useRef(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const comboAnim = useRef(new Animated.Value(0)).current;
 
   const loadNextQuestion = useCallback((currentMistakes) => {
     setFeedback(null);
@@ -51,8 +53,6 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
     }
 
     setQuestion(q);
-
-    // Animate question in
     fadeAnim.setValue(0);
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -60,7 +60,6 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
       useNativeDriver: true,
     }).start();
 
-    // Focus input after a short delay and dismiss keyboard
     setTimeout(() => {
       inputRef.current?.focus();
       Keyboard.dismiss();
@@ -91,9 +90,17 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
     ]).start();
   };
 
+  const triggerComboAnim = () => {
+    comboAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(comboAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.delay(400),
+      Animated.timing(comboAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
+
   const handleSubmit = useCallback(async () => {
     if (!question || isSubmitting || feedback !== null) return;
-
     const trimmed = input.trim();
     if (!trimmed || isNaN(Number(trimmed))) return;
 
@@ -104,6 +111,10 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
     const isCorrect = userAnswer === question.answer;
 
     if (isCorrect) {
+      playCorrect();
+      const newCombo = combo + 1;
+      setCombo(newCombo);
+      if (newCombo >= 3) triggerComboAnim();
       setFeedback('correct');
       setSession((s) => ({ ...s, total: s.total + 1, correct: s.correct + 1 }));
       if (isMistakesMode) {
@@ -115,6 +126,8 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
         setTimeout(() => loadNextQuestion(mistakes), FEEDBACK_DURATION);
       }
     } else {
+      playWrong();
+      setCombo(0);
       setFeedback('wrong');
       setCorrectAnswer(question.answer);
       triggerShake();
@@ -126,7 +139,7 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
       }
       setTimeout(() => loadNextQuestion(isMistakesMode ? mistakes : mistakes), FEEDBACK_DURATION);
     }
-  }, [question, input, isSubmitting, feedback, isMistakesMode, mistakes, loadNextQuestion]);
+  }, [question, input, isSubmitting, feedback, isMistakesMode, mistakes, loadNextQuestion, combo]);
 
   const handleEndSession = () => {
     onEndSession({
@@ -154,6 +167,9 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
       ? colors.errorGlow
       : 'transparent';
 
+  const comboOpacity = comboAnim;
+  const comboScale = comboAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.bg }]} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
@@ -171,12 +187,35 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
             <Text style={styles.totalCount}>{session.total}</Text>
           </Text>
         </View>
-        {isMistakesMode && (
+        {isMistakesMode ? (
           <View style={styles.modeBadge}>
             <Text style={styles.modeBadgeText}>Review</Text>
           </View>
+        ) : (
+          combo >= 2 ? (
+            <View style={styles.comboBadge}>
+              <Text style={styles.comboBadgeText}>🔥 ×{combo}</Text>
+            </View>
+          ) : (
+            <View style={{ width: 60 }} />
+          )
         )}
       </View>
+
+      {/* Combo popup */}
+      {combo >= 3 && (
+        <Animated.View
+          style={[
+            styles.comboPopup,
+            { opacity: comboOpacity, transform: [{ scale: comboScale }] },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.comboPopupText}>
+            {combo >= 10 ? '🏆 Unstoppable!' : combo >= 7 ? '⚡ Amazing!' : combo >= 5 ? '🔥 On Fire!' : '✨ Combo!'}
+          </Text>
+        </Animated.View>
+      )}
 
       {/* Question */}
       <View style={styles.questionArea}>
@@ -211,7 +250,6 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
           </View>
         </Animated.View>
 
-        {/* Feedback message */}
         {feedback === 'correct' && (
           <View style={styles.feedbackMsg}>
             <Text style={styles.feedbackMsgCorrect}>✓ Correct!</Text>
@@ -228,14 +266,10 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
       <View style={styles.inputArea}>
         <TextInput
           ref={inputRef}
-          style={[
-            styles.hiddenInput,
-            feedback !== null && styles.hiddenInputDisabled,
-          ]}
+          style={[styles.hiddenInput, feedback !== null && styles.hiddenInputDisabled]}
           value={input}
           onChangeText={(text) => {
             if (feedback !== null || isSubmitting) return;
-            // Only digits, max 4 chars
             const cleaned = text.replace(/[^0-9]/g, '').slice(0, 4);
             setInput(cleaned);
           }}
@@ -299,23 +333,13 @@ export default function QuizScreen({ mode, onEndSession, onNavigateHome }) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
+  safe: { flex: 1, backgroundColor: colors.bg },
   feedbackOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 24,
-    color: colors.textMuted,
-  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { fontSize: 24, color: colors.textMuted },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -324,49 +348,46 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     zIndex: 1,
   },
-  backBtn: {
-    paddingVertical: spacing.sm,
-    paddingRight: spacing.md,
-  },
-  backBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    letterSpacing: 0.2,
-  },
-  sessionBadge: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  sessionStat: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  correctCount: {
-    color: colors.success,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  sessionDivider: {
-    color: colors.textMuted,
-    fontWeight: '400',
-  },
-  totalCount: {
-    color: colors.textSecondary,
-  },
+  backBtn: { paddingVertical: spacing.sm, paddingRight: spacing.md, width: 60 },
+  backBtnText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  sessionBadge: { flex: 1, alignItems: 'center' },
+  sessionStat: { fontSize: 16, fontWeight: '700' },
+  correctCount: { color: colors.success, fontSize: 18, fontWeight: '800' },
+  sessionDivider: { color: colors.textMuted, fontWeight: '400' },
+  totalCount: { color: colors.textSecondary },
   modeBadge: {
     backgroundColor: colors.warnDim,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+    width: 60,
+    alignItems: 'center',
   },
-  modeBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.warn,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  modeBadgeText: { fontSize: 11, fontWeight: '700', color: colors.warn, letterSpacing: 0.5, textTransform: 'uppercase' },
+  comboBadge: {
+    backgroundColor: colors.errorGlow,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.streak + '44',
+    width: 60,
+    alignItems: 'center',
   },
+  comboBadgeText: { fontSize: 12, fontWeight: '700', color: colors.streak },
+  comboPopup: {
+    position: 'absolute',
+    top: 90,
+    alignSelf: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.streak + '44',
+    zIndex: 99,
+  },
+  comboPopupText: { fontSize: 16, fontWeight: '800', color: colors.streak },
   questionArea: {
     flex: 1,
     justifyContent: 'center',
@@ -381,32 +402,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  operandA: {
-    fontSize: 52,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -2,
-  },
-  operator: {
-    fontSize: 40,
-    fontWeight: '300',
-    color: colors.primary,
-    letterSpacing: -1,
-    marginHorizontal: spacing.xs,
-  },
-  operandB: {
-    fontSize: 52,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -2,
-  },
-  equals: {
-    fontSize: 40,
-    fontWeight: '300',
-    color: colors.textMuted,
-    letterSpacing: -1,
-    marginHorizontal: spacing.xs,
-  },
+  operandA: { fontSize: 52, fontWeight: '800', color: colors.text, letterSpacing: -2 },
+  operator: { fontSize: 40, fontWeight: '300', color: colors.primary, letterSpacing: -1, marginHorizontal: spacing.xs },
+  operandB: { fontSize: 52, fontWeight: '800', color: colors.text, letterSpacing: -2 },
+  equals: { fontSize: 40, fontWeight: '300', color: colors.textMuted, letterSpacing: -1, marginHorizontal: spacing.xs },
   answerSlot: {
     minWidth: 80,
     alignItems: 'center',
@@ -416,67 +415,20 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     paddingHorizontal: spacing.xs,
   },
-  answerText: {
-    fontSize: 52,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -2,
-  },
-  answerPlaceholder: {
-    color: colors.border,
-  },
-  answerCorrect: {
-    color: colors.success,
-  },
-  answerWrong: {
-    color: colors.error,
-    textDecorationLine: 'line-through',
-    fontSize: 36,
-  },
-  wrongAnswerRow: {
-    alignItems: 'center',
-  },
-  answerCorrectSmall: {
-    color: colors.success,
-    fontSize: 36,
-  },
-  feedbackMsg: {
-    marginTop: spacing.xl,
-    alignItems: 'center',
-  },
-  feedbackMsgCorrect: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.success,
-    letterSpacing: 0.3,
-  },
-  feedbackMsgWrong: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.error,
-    letterSpacing: 0.2,
-  },
-  inputArea: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    zIndex: 1,
-  },
-  hiddenInput: {
-    position: 'absolute',
-    opacity: 0,
-    height: 0,
-    width: 0,
-  },
-  hiddenInputDisabled: {
-    pointerEvents: 'none',
-  },
-  numpad: {
-    gap: spacing.sm,
-  },
-  numpadRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
+  answerText: { fontSize: 52, fontWeight: '800', color: colors.text, letterSpacing: -2 },
+  answerPlaceholder: { color: colors.border },
+  answerCorrect: { color: colors.success },
+  answerWrong: { color: colors.error, textDecorationLine: 'line-through', fontSize: 36 },
+  wrongAnswerRow: { alignItems: 'center' },
+  answerCorrectSmall: { color: colors.success, fontSize: 36 },
+  feedbackMsg: { marginTop: spacing.xl, alignItems: 'center' },
+  feedbackMsgCorrect: { fontSize: 18, fontWeight: '700', color: colors.success, letterSpacing: 0.3 },
+  feedbackMsgWrong: { fontSize: 16, fontWeight: '600', color: colors.error, letterSpacing: 0.2 },
+  inputArea: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, zIndex: 1 },
+  hiddenInput: { position: 'absolute', opacity: 0, height: 0, width: 0 },
+  hiddenInputDisabled: { pointerEvents: 'none' },
+  numpad: { gap: spacing.sm },
+  numpadRow: { flexDirection: 'row', gap: spacing.sm },
   numpadKey: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -487,9 +439,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  numpadKeyAction: {
-    backgroundColor: colors.surfaceAlt,
-  },
+  numpadKeyAction: { backgroundColor: colors.surfaceAlt },
   numpadKeySubmit: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
@@ -499,20 +449,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  numpadKeyPressed: {
-    opacity: 0.65,
-    transform: [{ scale: 0.96 }],
-  },
-  numpadKeyDisabled: {
-    opacity: 0.4,
-  },
-  numpadKeyText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  numpadKeyTextSubmit: {
-    color: '#fff',
-    fontWeight: '700',
-  },
+  numpadKeyPressed: { opacity: 0.65, transform: [{ scale: 0.96 }] },
+  numpadKeyDisabled: { opacity: 0.4 },
+  numpadKeyText: { fontSize: 20, fontWeight: '600', color: colors.text },
+  numpadKeyTextSubmit: { color: '#fff', fontWeight: '700' },
 });
